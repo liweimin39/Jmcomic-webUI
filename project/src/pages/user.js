@@ -16,6 +16,10 @@ class UserPage {
         this.notificationList = [];
         this.notificationTotal = 0;
         this.notificationUnread = 0;
+        // 登出相关的 AbortController
+        this.logoutController = null;
+        // 是否正在登出
+        this.isLoggingOut = false;
     }
 
     async init() {
@@ -224,11 +228,172 @@ class UserPage {
         }
     }
 
-    async handleLogout() {
-        await userApi.logout();
+    /**
+     * 优化后的登出方法
+     * 1. 立即清除本地状态（乐观更新），界面立刻响应
+     * 2. 异步请求登出接口，不阻塞UI
+     * 3. 使用 AbortController 管理请求，避免重复请求
+     * 4. 接口失败时静默处理，不阻塞用户
+     */
+    handleLogout() {
+        // 防止重复点击
+        if (this.isLoggingOut) return;
+        this.isLoggingOut = true;
+
+        // 获取登出按钮，显示加载状态
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+            logoutBtn.textContent = '登出中...';
+            logoutBtn.disabled = true;
+        }
+
+        // 保存用户信息用于请求（登出接口可能需要）
+        const currentUserInfo = this.userInfo;
+
+        // ---- 第一步：立即清除本地状态（乐观更新） ----
+        // 清除 localStorage
+        localStorage.removeItem('jwttoken');
+        localStorage.removeItem('userInfo');
+        
+        // 更新内存状态
         this.userInfo = null;
+        
+        // 立即更新 UI（显示登录界面）
         this.render();
         this.updateNotificationBadge();
+        
+        // 更新导航栏的用户名
+        this.updateNavUser();
+
+        // ---- 第二步：异步请求登出接口（不阻塞UI） ----
+        // 取消之前的登出请求
+        if (this.logoutController) {
+            this.logoutController.abort();
+            this.logoutController = null;
+        }
+
+        // 创建新的 AbortController
+        this.logoutController = new AbortController();
+        const signal = this.logoutController.signal;
+
+        // 使用 Promise.race 实现超时控制（5秒超时）
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('登出请求超时')), 5000);
+        });
+
+        // 执行登出请求（带超时）
+        Promise.race([
+            this.performLogout(currentUserInfo, signal),
+            timeoutPromise
+        ])
+        .catch((err) => {
+            // 如果是 AbortError，说明请求被取消，忽略
+            if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+                console.log('登出请求已取消');
+                return;
+            }
+            // 其他错误静默处理（已经本地登出了）
+            console.warn('登出接口请求失败（已本地登出）:', err.message);
+        })
+        .finally(() => {
+            // 清理状态
+            this.logoutController = null;
+            this.isLoggingOut = false;
+            
+            // 恢复按钮状态（如果还在登录页，按钮已被移除）
+            if (logoutBtn && document.getElementById('logout-btn')) {
+                logoutBtn.textContent = '登出';
+                logoutBtn.disabled = false;
+            }
+        });
+    }
+
+    /**
+     * 执行实际的登出请求（支持重试）
+     */
+    async performLogout(userInfo, signal) {
+        // 如果没有 token，直接返回
+        if (!userInfo || !userInfo.jwttoken) {
+            return;
+        }
+
+        // 尝试多个服务器，每个服务器最多尝试1次，总共最多3次
+        const servers = jmApi.servers || [];
+        const maxRetries = Math.min(servers.length, 3);
+        
+        let lastError = null;
+
+        for (let i = 0; i < maxRetries; i++) {
+            // 检查是否已取消
+            if (signal && signal.aborted) {
+                throw new DOMException('Request cancelled', 'AbortError');
+            }
+
+            const serverIndex = i % servers.length;
+            const server = servers[serverIndex];
+            
+            try {
+                const url = `https://${server}/logout`;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'token': jmApi.accessToken.token,
+                        'tokenParam': jmApi.accessToken.tokenParam,
+                        'Authorization': `Bearer ${userInfo.jwttoken || ''}`
+                    },
+                    body: '',
+                    signal: signal // 支持取消
+                });
+
+                // 无论响应状态如何，只要请求完成就算成功（本地已登出）
+                // 但如果是网络错误，继续重试
+                if (!response.ok) {
+                    // 如果是 401/403，说明 token 已失效，视为成功
+                    if (response.status === 401 || response.status === 403) {
+                        console.log('Token已失效，登出成功');
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                // 读取响应（但不需要等待解析完成）
+                // 异步读取，不阻塞
+                response.text().catch(() => {});
+                return;
+
+            } catch (err) {
+                // 如果是取消错误，立即抛出
+                if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
+                    throw err;
+                }
+                lastError = err;
+                console.warn(`登出请求失败 (服务器 ${server}):`, err.message);
+                // 继续重试
+            }
+        }
+
+        // 所有重试都失败，抛出最后一个错误
+        throw lastError || new Error('所有登出请求均失败');
+    }
+
+    /**
+     * 更新导航栏中的用户链接文字
+     */
+    updateNavUser() {
+        const userLinks = document.querySelectorAll('.user-nav-link');
+        userLinks.forEach(link => {
+            const span = link.querySelector('span');
+            if (span) {
+                // 如果已登出，显示"登录"
+                if (!this.userInfo) {
+                    span.textContent = '登录';
+                } else {
+                    span.textContent = this.userInfo.username;
+                }
+            }
+        });
     }
 
     async loadFavorites(page = 1) {
@@ -413,11 +578,12 @@ class UserPage {
         userLinks.forEach(link => {
             const span = link.querySelector('span');
             if (span) {
-                if (unread && unread > 0) {
+                if (unread && unread > 0 && this.userInfo) {
                     span.textContent = `信箱 ${unread}`;
+                } else if (this.userInfo) {
+                    span.textContent = this.userInfo.username;
                 } else {
-                    const username = this.userInfo ? this.userInfo.username : '登录';
-                    span.textContent = username;
+                    span.textContent = '登录';
                 }
             }
         });
