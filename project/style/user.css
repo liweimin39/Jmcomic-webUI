@@ -394,3 +394,117 @@
     .notif-header { flex-direction: column; align-items: flex-start; }
     .notif-date { margin-left: 0; }
 }
+
+/* ===== 按钮加载动画 ===== */
+.btn-loader {
+    display: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top: 2px solid #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* ===== 列表加载动画 ===== */
+.list-loader-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    min-height: 200px;
+}
+
+.list-loader-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-color, #e0e0e0);
+    border-top: 3px solid var(--primary-color, #007bff);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.list-loader-text {
+    margin-top: 16px;
+    color: var(--text-secondary, #888);
+    font-size: 14px;
+}
+
+/* ===== 列表错误状态 ===== */
+.list-error-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    min-height: 200px;
+    color: #d9534f;
+}
+
+.list-error-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.list-error-text {
+    font-size: 14px;
+    color: #d9534f;
+}
+
+/* ===== 列表空状态 ===== */
+.list-empty-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    min-height: 200px;
+    color: var(--text-secondary, #888);
+}
+
+.list-empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.list-empty-text {
+    font-size: 14px;
+    color: var(--text-secondary, #888);
+}
+
+/* ===== 加载中的漫画占位 ===== */
+.comics-cr.loading {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* 兼容旧的 loading-icon */
+.loading-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    min-height: 200px;
+}
+
+.loading-icon::after {
+    content: '';
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-color, #e0e0e0);
+    border-top: 3px solid var(--primary-color, #007bff);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}

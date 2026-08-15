@@ -20,6 +20,15 @@ class UserPage {
         this.logoutController = null;
         // 是否正在登出
         this.isLoggingOut = false;
+        // 加载状态
+        this.loadingStates = {
+            login: false,
+            register: false,
+            forgot: false,
+            favorites: false,
+            tracking: false,
+            notifications: false
+        };
     }
 
     async init() {
@@ -64,7 +73,10 @@ class UserPage {
                     <h2>登录</h2>
                     <input type="text" id="login-username" placeholder="用户名">
                     <input type="password" id="login-password" placeholder="密码">
-                    <button id="login-btn">登录</button>
+                    <button id="login-btn">
+                        <span class="btn-text">登录</span>
+                        <span class="btn-loader" style="display:none;"></span>
+                    </button>
                     <div id="login-message" class="msg"></div>
                 </div>
                 <div class="auth-form" id="register-form" style="display:none;">
@@ -78,13 +90,19 @@ class UserPage {
                         <option value="Male">男</option>
                         <option value="Female">女</option>
                     </select>
-                    <button id="register-btn">注册</button>
+                    <button id="register-btn">
+                        <span class="btn-text">注册</span>
+                        <span class="btn-loader" style="display:none;"></span>
+                    </button>
                     <div id="register-message" class="msg"></div>
                 </div>
                 <div class="auth-form" id="forgot-form" style="display:none;">
                     <h2>重置密码</h2>
                     <input type="email" id="forgot-email" placeholder="注册邮箱">
-                    <button id="forgot-btn">发送重置邮件</button>
+                    <button id="forgot-btn">
+                        <span class="btn-text">发送重置邮件</span>
+                        <span class="btn-loader" style="display:none;"></span>
+                    </button>
                     <div id="forgot-message" class="msg"></div>
                 </div>
             </div>
@@ -103,7 +121,10 @@ class UserPage {
                         <p>金币: ${info.coin}</p>
                         <p>经验: ${info.exp} / ${info.nextLevelExp}</p>
                     </div>
-                    <button id="logout-btn" class="logout-btn">登出</button>
+                    <button id="logout-btn" class="logout-btn">
+                        <span class="btn-text">登出</span>
+                        <span class="btn-loader" style="display:none;"></span>
+                    </button>
                 </div>
                 <div class="user-tabs">
                     <span class="user-tab active" data-tab="favorites">收藏 (${info.album_favorites || 0})</span>
@@ -143,10 +164,10 @@ class UserPage {
             }
 
             // 按钮事件
-            if (e.target.id === 'login-btn') this.handleLogin();
-            if (e.target.id === 'register-btn') this.handleRegister();
-            if (e.target.id === 'forgot-btn') this.handleForgot();
-            if (e.target.id === 'logout-btn') this.handleLogout();
+            if (e.target.closest('#login-btn')) this.handleLogin(e);
+            if (e.target.closest('#register-btn')) this.handleRegister(e);
+            if (e.target.closest('#forgot-btn')) this.handleForgot(e);
+            if (e.target.closest('#logout-btn')) this.handleLogout(e);
             
             // 通知类型切换（事件委托）
             const typeBtn = e.target.closest('.notif-type-btn');
@@ -163,33 +184,99 @@ class UserPage {
         });
     }
 
-    async handleLogin() {
+    // ----- 设置按钮加载状态 -----
+    setButtonLoading(btn, loading) {
+        if (!btn) return;
+        const text = btn.querySelector('.btn-text');
+        const loader = btn.querySelector('.btn-loader');
+        if (loading) {
+            btn.disabled = true;
+            if (text) text.style.display = 'none';
+            if (loader) { loader.style.display = 'inline-block'; }
+        } else {
+            btn.disabled = false;
+            if (text) text.style.display = 'inline';
+            if (loader) { loader.style.display = 'none'; }
+        }
+    }
+
+    // ----- 显示带加载动画的列表容器 -----
+    showListLoader(container) {
+        if (!container) return;
+        container.innerHTML = `
+            <div class="list-loader-container">
+                <div class="list-loader-spinner"></div>
+                <p class="list-loader-text">加载中...</p>
+            </div>
+        `;
+    }
+
+    // ----- 显示空状态或错误状态 -----
+    showListError(container, message) {
+        if (!container) return;
+        container.innerHTML = `
+            <div class="list-error-container">
+                <span class="list-error-icon">⚠️</span>
+                <p class="list-error-text">${message || '加载失败，请重试'}</p>
+            </div>
+        `;
+    }
+
+    showListEmpty(container, message) {
+        if (!container) return;
+        container.innerHTML = `
+            <div class="list-empty-container">
+                <span class="list-empty-icon">📭</span>
+                <p class="list-empty-text">${message || '暂无内容'}</p>
+            </div>
+        `;
+    }
+
+    async handleLogin(e) {
+        const btn = document.getElementById('login-btn');
+        if (this.loadingStates.login) return;
+        
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value.trim();
         const msg = document.getElementById('login-message');
+        
         if (!username || !password) {
             msg.textContent = '请填写完整信息';
             msg.style.color = '#d9534f';
             return;
         }
+        
+        this.loadingStates.login = true;
+        this.setButtonLoading(btn, true);
+        msg.textContent = '';
+        msg.style.color = '';
+        
         try {
             const result = await userApi.login(username, password);
             this.userInfo = result;
+            this.loadingStates.login = false;
+            this.setButtonLoading(btn, false);
             this.render();
             this.updateNotificationBadge();
         } catch (err) {
+            this.loadingStates.login = false;
+            this.setButtonLoading(btn, false);
             msg.textContent = err.message || '登录失败';
             msg.style.color = '#d9534f';
         }
     }
 
-    async handleRegister() {
+    async handleRegister(e) {
+        const btn = document.getElementById('register-btn');
+        if (this.loadingStates.register) return;
+        
         const username = document.getElementById('reg-username').value.trim();
         const email = document.getElementById('reg-email').value.trim();
         const password = document.getElementById('reg-password').value;
         const confirm = document.getElementById('reg-password-confirm').value;
         const gender = document.getElementById('reg-gender').value;
         const msg = document.getElementById('register-message');
+        
         if (!username || !email || !password || !confirm) {
             msg.textContent = '请填写所有必填项';
             msg.style.color = '#d9534f';
@@ -200,29 +287,53 @@ class UserPage {
             msg.style.color = '#d9534f';
             return;
         }
+        
+        this.loadingStates.register = true;
+        this.setButtonLoading(btn, true);
+        msg.textContent = '';
+        msg.style.color = '';
+        
         try {
             const result = await userApi.register(username, email, password, confirm, gender);
+            this.loadingStates.register = false;
+            this.setButtonLoading(btn, false);
             msg.textContent = result.msg || '注册成功，请查收邮件验证';
             msg.style.color = 'green';
         } catch (err) {
+            this.loadingStates.register = false;
+            this.setButtonLoading(btn, false);
             msg.textContent = err.message || '注册失败';
             msg.style.color = '#d9534f';
         }
     }
 
-    async handleForgot() {
+    async handleForgot(e) {
+        const btn = document.getElementById('forgot-btn');
+        if (this.loadingStates.forgot) return;
+        
         const email = document.getElementById('forgot-email').value.trim();
         const msg = document.getElementById('forgot-message');
+        
         if (!email) {
             msg.textContent = '请输入邮箱';
             msg.style.color = '#d9534f';
             return;
         }
+        
+        this.loadingStates.forgot = true;
+        this.setButtonLoading(btn, true);
+        msg.textContent = '';
+        msg.style.color = '';
+        
         try {
             const result = await userApi.forgotPassword(email);
+            this.loadingStates.forgot = false;
+            this.setButtonLoading(btn, false);
             msg.textContent = result.msg || '重置邮件已发送，请查收';
             msg.style.color = 'green';
         } catch (err) {
+            this.loadingStates.forgot = false;
+            this.setButtonLoading(btn, false);
             msg.textContent = err.message || '发送失败';
             msg.style.color = '#d9534f';
         }
@@ -235,75 +346,57 @@ class UserPage {
      * 3. 使用 AbortController 管理请求，避免重复请求
      * 4. 接口失败时静默处理，不阻塞用户
      */
-    handleLogout() {
+    handleLogout(e) {
         // 防止重复点击
         if (this.isLoggingOut) return;
         this.isLoggingOut = true;
 
         // 获取登出按钮，显示加载状态
         const logoutBtn = document.getElementById('logout-btn');
-        if (logoutBtn) {
-            logoutBtn.textContent = '登出中...';
-            logoutBtn.disabled = true;
-        }
+        this.setButtonLoading(logoutBtn, true);
 
         // 保存用户信息用于请求（登出接口可能需要）
         const currentUserInfo = this.userInfo;
 
         // ---- 第一步：立即清除本地状态（乐观更新） ----
-        // 清除 localStorage
         localStorage.removeItem('jwttoken');
         localStorage.removeItem('userInfo');
-        
-        // 更新内存状态
         this.userInfo = null;
-        
-        // 立即更新 UI（显示登录界面）
         this.render();
         this.updateNotificationBadge();
-        
-        // 更新导航栏的用户名
         this.updateNavUser();
 
         // ---- 第二步：异步请求登出接口（不阻塞UI） ----
-        // 取消之前的登出请求
         if (this.logoutController) {
             this.logoutController.abort();
             this.logoutController = null;
         }
 
-        // 创建新的 AbortController
         this.logoutController = new AbortController();
         const signal = this.logoutController.signal;
 
-        // 使用 Promise.race 实现超时控制（5秒超时）
         const timeoutPromise = new Promise((_, reject) => {
             setTimeout(() => reject(new Error('登出请求超时')), 5000);
         });
 
-        // 执行登出请求（带超时）
         Promise.race([
             this.performLogout(currentUserInfo, signal),
             timeoutPromise
         ])
         .catch((err) => {
-            // 如果是 AbortError，说明请求被取消，忽略
             if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
                 console.log('登出请求已取消');
                 return;
             }
-            // 其他错误静默处理（已经本地登出了）
             console.warn('登出接口请求失败（已本地登出）:', err.message);
         })
         .finally(() => {
-            // 清理状态
             this.logoutController = null;
             this.isLoggingOut = false;
-            
-            // 恢复按钮状态（如果还在登录页，按钮已被移除）
-            if (logoutBtn && document.getElementById('logout-btn')) {
-                logoutBtn.textContent = '登出';
-                logoutBtn.disabled = false;
+            // 按钮可能已被重新渲染，检查是否存在
+            const btn = document.getElementById('logout-btn');
+            if (btn) {
+                this.setButtonLoading(btn, false);
             }
         });
     }
@@ -312,19 +405,15 @@ class UserPage {
      * 执行实际的登出请求（支持重试）
      */
     async performLogout(userInfo, signal) {
-        // 如果没有 token，直接返回
         if (!userInfo || !userInfo.jwttoken) {
             return;
         }
 
-        // 尝试多个服务器，每个服务器最多尝试1次，总共最多3次
         const servers = jmApi.servers || [];
         const maxRetries = Math.min(servers.length, 3);
-        
         let lastError = null;
 
         for (let i = 0; i < maxRetries; i++) {
-            // 检查是否已取消
             if (signal && signal.aborted) {
                 throw new DOMException('Request cancelled', 'AbortError');
             }
@@ -334,7 +423,6 @@ class UserPage {
             
             try {
                 const url = `https://${server}/logout`;
-                
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: {
@@ -344,13 +432,10 @@ class UserPage {
                         'Authorization': `Bearer ${userInfo.jwttoken || ''}`
                     },
                     body: '',
-                    signal: signal // 支持取消
+                    signal: signal
                 });
 
-                // 无论响应状态如何，只要请求完成就算成功（本地已登出）
-                // 但如果是网络错误，继续重试
                 if (!response.ok) {
-                    // 如果是 401/403，说明 token 已失效，视为成功
                     if (response.status === 401 || response.status === 403) {
                         console.log('Token已失效，登出成功');
                         return;
@@ -358,23 +443,18 @@ class UserPage {
                     throw new Error(`HTTP ${response.status}`);
                 }
 
-                // 读取响应（但不需要等待解析完成）
-                // 异步读取，不阻塞
                 response.text().catch(() => {});
                 return;
 
             } catch (err) {
-                // 如果是取消错误，立即抛出
                 if (err.name === 'AbortError' || err.code === 'ERR_CANCELED') {
                     throw err;
                 }
                 lastError = err;
                 console.warn(`登出请求失败 (服务器 ${server}):`, err.message);
-                // 继续重试
             }
         }
 
-        // 所有重试都失败，抛出最后一个错误
         throw lastError || new Error('所有登出请求均失败');
     }
 
@@ -386,7 +466,6 @@ class UserPage {
         userLinks.forEach(link => {
             const span = link.querySelector('span');
             if (span) {
-                // 如果已登出，显示"登录"
                 if (!this.userInfo) {
                     span.textContent = '登录';
                 } else {
@@ -399,33 +478,60 @@ class UserPage {
     async loadFavorites(page = 1) {
         const container = document.getElementById('user-list-container');
         if (!container) return;
-        container.innerHTML = '<div class="loading-icon"></div>';
+        if (this.loadingStates.favorites) return;
+        
+        this.loadingStates.favorites = true;
+        this.showListLoader(container);
+        
         try {
             const data = await userApi.getFavoriteList(page);
-            container.innerHTML = this.renderComicList(data.list || []);
+            this.loadingStates.favorites = false;
+            const list = data.list || [];
+            if (list.length === 0) {
+                this.showListEmpty(container, '暂无收藏');
+            } else {
+                container.innerHTML = this.renderComicList(list);
+            }
         } catch (err) {
-            container.innerHTML = `<p style="color:#d9534f;">加载失败: ${err.message || '未知错误'}</p>`;
+            this.loadingStates.favorites = false;
+            this.showListError(container, err.message || '加载失败');
         }
     }
 
     async loadTracking(page = 1) {
         const container = document.getElementById('user-list-container');
         if (!container) return;
-        container.innerHTML = '<div class="loading-icon"></div>';
+        if (this.loadingStates.tracking) return;
+        
+        this.loadingStates.tracking = true;
+        this.showListLoader(container);
+        
         try {
             const data = await userApi.getTrackingList(page);
-            container.innerHTML = this.renderComicList(data.item || []);
+            this.loadingStates.tracking = false;
+            const list = data.item || [];
+            if (list.length === 0) {
+                this.showListEmpty(container, '暂无追踪');
+            } else {
+                container.innerHTML = this.renderComicList(list);
+            }
         } catch (err) {
-            container.innerHTML = `<p style="color:#d9534f;">加载失败: ${err.message || '未知错误'}</p>`;
+            this.loadingStates.tracking = false;
+            this.showListError(container, err.message || '加载失败');
         }
     }
 
     async loadNotifications(page = 1) {
         const container = document.getElementById('user-list-container');
         if (!container) return;
-        container.innerHTML = '<div class="loading-icon"></div>';
+        if (this.loadingStates.notifications) return;
+        
+        this.loadingStates.notifications = true;
+        this.showListLoader(container);
+        
         try {
             const data = await userApi.getNotifications(this.notificationType, page);
+            this.loadingStates.notifications = false;
             
             let list = [];
             let total = 0;
@@ -459,8 +565,9 @@ class UserPage {
                 this.updateNotificationBadge(unread);
             }
         } catch (err) {
+            this.loadingStates.notifications = false;
             console.error('加载通知失败:', err);
-            container.innerHTML = `<p style="color:#d9534f;">加载失败: ${err.message || '未知错误'}</p>`;
+            this.showListError(container, err.message || '加载失败');
         }
     }
 
@@ -473,7 +580,6 @@ class UserPage {
         const total = this.notificationTotal || 0;
         const unread = this.notificationUnread || 0;
         
-        // 构建按钮和统计区域
         const typeButtons = `
             <div class="notif-types">
                 <span class="notif-type-btn ${this.notificationType === 'all' ? 'active' : ''}" data-type="all">全部</span>
@@ -485,8 +591,6 @@ class UserPage {
         `;
         
         container.innerHTML = typeButtons;
-        
-        // 渲染列表项
         this.renderNotifications();
     }
 
@@ -499,7 +603,6 @@ class UserPage {
         const listEl = container.querySelector('.notif-list');
         if (!listEl) return;
         
-        // 更新统计信息
         const statsEl = container.querySelector('.notif-stats');
         if (statsEl) {
             statsEl.textContent = `共 ${this.notificationTotal || 0} 条通知，未读 ${this.notificationUnread || 0} 条`;
