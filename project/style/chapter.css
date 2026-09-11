@@ -533,10 +533,76 @@
 
 /* ===== 移动端适配 ===== */
 @media screen and (max-width: 950px) {
-    .chapter-list-cr {
+    /* 移动端：右侧固定进度条 */
+    .body-right {
+        display: block;
+        position: fixed;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 32px;              /* ★ 明确宽度，靠它隔离点击区域 */
         margin: 0;
-        border-top: none;
+        padding: 0;
+        z-index: 60;
+        /* ★ 关键：删掉 pointer-events: none */
     }
+
+    /* 隐藏推荐漫画与装饰图，只留进度条 */
+    .body-right .recommended-comics,
+    .body-right .jmnian-looking {
+        display: none;
+    }
+
+    /* 进度条容器 */
+    .body-right .progress-cr {
+        position: static;
+        width: 100%;
+        margin: 0;
+    }
+
+    /* 进度条本体 */
+    .body-right .progress {
+        width: 24px;
+        height: 110px;
+        margin: 0 auto;
+        background: rgba(255, 255, 255, 0.9);
+        box-shadow: 0 0 8px rgba(255, 122, 162, 0.7);
+        cursor: pointer;
+        touch-action: none;       /* ★ 关键：阻止浏览器抢占拖拽手势 */
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    /* 填充部分 */
+    .body-right .progress-inner {
+        position: relative;
+        padding-left: 0;
+        background: rgba(255, 122, 162, 0.35);
+    }
+
+    /* 页码文字显示在进度条左侧，带白底更好读 */
+    .body-right .progress-inner span {
+        position: absolute;
+        right: calc(100% + 6px);
+        bottom: 0;
+        transform: translateY(50%);
+        white-space: nowrap;
+        font-size: 13px;
+        color: #e4396c;
+        font-weight: 700;
+        line-height: 1;
+        padding: 2px 4px;
+        background: rgba(255, 255, 255, 0.85);
+        border-radius: 3px;
+        pointer-events: none;
+    }
+
+    /* 其余布局保持不变 */
+    .body-left { width: 100%; }
+    .evaluation { background-color: #ffcddc; }
+    .comment, .head { margin: 0; }
+    .detailed-info { display: none; }
+    .mob-det-info { display: block; }
 }
 @media screen and (max-width: 680px) {
     .cl-title {

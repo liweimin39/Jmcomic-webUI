@@ -15,7 +15,7 @@ export class ChapterActionManager {
     init(comicId) {
         this.comicId = comicId;
         var self = this;
-        
+
         if (this.favoriteBtn) {
             this.favoriteBtn.dataset.id = comicId;
             this.favoriteBtn.addEventListener('click', function(e) {
@@ -36,7 +36,7 @@ export class ChapterActionManager {
         var token = localStorage.getItem('jwttoken');
         var isLoggedIn = !!token;
         var self = this;
-        
+
         if (!isLoggedIn) {
             [this.favoriteBtn, this.trackingBtn].forEach(function(btn) {
                 if (btn) {
@@ -108,9 +108,9 @@ export class ChapterActionManager {
             e.preventDefault();
             e.stopPropagation();
         }
-        
+
         if (this.isLoading) return;
-        
+
         if (!this.checkLoginStatus()) {
             window.location.href = './user.html';
             return;
@@ -118,11 +118,13 @@ export class ChapterActionManager {
 
         this.setLoading(true);
         var self = this;
-        
+
         try {
+            var wasFavorite = self.isFavorite;   // ★ 记录操作前状态
+
             var result = await userApi.toggleFavorite(this.comicId);
             console.log('收藏切换结果:', result);
-            
+
             if (result.type === 'add') {
                 self.isFavorite = true;
             } else if (result.type === 'remove') {
@@ -130,7 +132,12 @@ export class ChapterActionManager {
             } else if (result.msg) {
                 self.isFavorite = result.msg.indexOf('添加到') !== -1;
             }
-            
+
+            // ★ 只有状态真正变化才同步本地计数，避免重复点击累积误差
+            if (wasFavorite !== self.isFavorite) {
+                self.syncFavoriteCount(self.isFavorite);
+            }
+
             self.updateFavoriteUI();
             self.showToast(self.isFavorite ? '已收藏' : '已取消收藏');
         } catch (err) {
@@ -147,9 +154,9 @@ export class ChapterActionManager {
             e.preventDefault();
             e.stopPropagation();
         }
-        
+
         if (this.isLoading) return;
-        
+
         if (!this.checkLoginStatus()) {
             window.location.href = './user.html';
             return;
@@ -157,20 +164,20 @@ export class ChapterActionManager {
 
         this.setLoading(true);
         var self = this;
-        
+
         try {
             // 1. 先发送 POST 请求切换追踪状态
             var result = await userApi.toggleTracking(this.comicId);
             console.log('追踪切换请求结果:', result);
-            
+
             // 2. 再发送 GET 请求获取最新的追踪状态
             var newStatus = await self.getTrackingStatus();
             console.log('最新追踪状态:', newStatus);
-            
+
             self.isTracking = newStatus;
             self.updateTrackingUI();
             self.showToast(self.isTracking ? '已开启追踪' : '已取消追踪');
-            
+
         } catch (err) {
             console.error('切换追踪失败:', err);
             self.showToast('操作失败: ' + (err.message || '未知错误'), 'error');
@@ -179,11 +186,30 @@ export class ChapterActionManager {
         }
     }
 
+    /**
+     * 同步 localStorage.userInfo 中的收藏总数
+     * @param {boolean} isFavorite - true 表示当前已收藏（+1），false 表示取消收藏（-1）
+     */
+    syncFavoriteCount(isFavorite) {
+        try {
+            var raw = localStorage.getItem('userInfo');
+            if (!raw) return;
+            var info = JSON.parse(raw);
+            var current = Number(info.album_favorites) || 0;
+            info.album_favorites = isFavorite
+                ? current + 1
+                : Math.max(0, current - 1);
+            localStorage.setItem('userInfo', JSON.stringify(info));
+        } catch (e) {
+            console.warn('同步收藏数失败:', e);
+        }
+    }
+
     updateFavoriteUI() {
         if (!this.favoriteBtn) return;
         var svg = this.favoriteBtn.querySelector('svg');
         var span = this.favoriteBtn.querySelector('span');
-        
+
         if (this.isFavorite) {
             this.favoriteBtn.classList.add('active');
             if (svg) {
@@ -205,7 +231,7 @@ export class ChapterActionManager {
         if (!this.trackingBtn) return;
         var svg = this.trackingBtn.querySelector('svg');
         var span = this.trackingBtn.querySelector('span');
-        
+
         if (this.isTracking) {
             this.trackingBtn.classList.add('active');
             if (svg) {

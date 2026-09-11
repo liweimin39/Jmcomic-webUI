@@ -29,6 +29,8 @@ class UserPage {
             tracking: false,
             notifications: false
         };
+        // visibilitychange 监听器引用（便于重复 init 时避免叠加）
+        this._visibilityHandler = null;
     }
 
     async init() {
@@ -41,8 +43,49 @@ class UserPage {
         this.restoreSession();
         this.render();
         this.bindEvents();
-        
+
         this.updateNotificationBadge();
+
+        // ★ 从其他标签页/页面切回来时，同步最新的收藏数字（不重渲染，避免打断当前标签）
+        this.bindVisibilityRefresh();
+    }
+
+    /**
+     * 监听页面重新可见，同步 localStorage.userInfo 到 UI
+     * 只更新收藏数字，不重渲染，避免重置用户当前所在标签
+     */
+    bindVisibilityRefresh() {
+        if (this._visibilityHandler) {
+            document.removeEventListener('visibilitychange', this._visibilityHandler);
+        }
+        this._visibilityHandler = () => {
+            if (document.visibilityState !== 'visible') return;
+            if (!this.userInfo) return;
+
+            const raw = localStorage.getItem('userInfo');
+            if (!raw) return;
+
+            let newInfo;
+            try {
+                newInfo = JSON.parse(raw);
+            } catch (e) {
+                return;
+            }
+
+            // 收藏数变化时，只更新对应 tab 的文字
+            if (Number(newInfo.album_favorites || 0) !== Number(this.userInfo.album_favorites || 0)) {
+                const favTab = document.querySelector('.user-tab[data-tab="favorites"]');
+                if (favTab) {
+                    favTab.textContent = `收藏 (${newInfo.album_favorites || 0})`;
+                }
+            }
+
+            // 用户头像/等级/金币等变化（少），如需同步，可在此扩展
+
+            // 保留最新的 userInfo（供其他地方读取）
+            this.userInfo = { ...this.userInfo, ...newInfo };
+        };
+        document.addEventListener('visibilitychange', this._visibilityHandler);
     }
 
     restoreSession() {
@@ -168,7 +211,7 @@ class UserPage {
             if (e.target.closest('#register-btn')) this.handleRegister(e);
             if (e.target.closest('#forgot-btn')) this.handleForgot(e);
             if (e.target.closest('#logout-btn')) this.handleLogout(e);
-            
+
             // 通知类型切换（事件委托）
             const typeBtn = e.target.closest('.notif-type-btn');
             if (typeBtn) {
@@ -235,22 +278,22 @@ class UserPage {
     async handleLogin(e) {
         const btn = document.getElementById('login-btn');
         if (this.loadingStates.login) return;
-        
+
         const username = document.getElementById('login-username').value.trim();
         const password = document.getElementById('login-password').value.trim();
         const msg = document.getElementById('login-message');
-        
+
         if (!username || !password) {
             msg.textContent = '请填写完整信息';
             msg.style.color = '#d9534f';
             return;
         }
-        
+
         this.loadingStates.login = true;
         this.setButtonLoading(btn, true);
         msg.textContent = '';
         msg.style.color = '';
-        
+
         try {
             const result = await userApi.login(username, password);
             this.userInfo = result;
@@ -269,14 +312,14 @@ class UserPage {
     async handleRegister(e) {
         const btn = document.getElementById('register-btn');
         if (this.loadingStates.register) return;
-        
+
         const username = document.getElementById('reg-username').value.trim();
         const email = document.getElementById('reg-email').value.trim();
         const password = document.getElementById('reg-password').value;
         const confirm = document.getElementById('reg-password-confirm').value;
         const gender = document.getElementById('reg-gender').value;
         const msg = document.getElementById('register-message');
-        
+
         if (!username || !email || !password || !confirm) {
             msg.textContent = '请填写所有必填项';
             msg.style.color = '#d9534f';
@@ -287,12 +330,12 @@ class UserPage {
             msg.style.color = '#d9534f';
             return;
         }
-        
+
         this.loadingStates.register = true;
         this.setButtonLoading(btn, true);
         msg.textContent = '';
         msg.style.color = '';
-        
+
         try {
             const result = await userApi.register(username, email, password, confirm, gender);
             this.loadingStates.register = false;
@@ -310,21 +353,21 @@ class UserPage {
     async handleForgot(e) {
         const btn = document.getElementById('forgot-btn');
         if (this.loadingStates.forgot) return;
-        
+
         const email = document.getElementById('forgot-email').value.trim();
         const msg = document.getElementById('forgot-message');
-        
+
         if (!email) {
             msg.textContent = '请输入邮箱';
             msg.style.color = '#d9534f';
             return;
         }
-        
+
         this.loadingStates.forgot = true;
         this.setButtonLoading(btn, true);
         msg.textContent = '';
         msg.style.color = '';
-        
+
         try {
             const result = await userApi.forgotPassword(email);
             this.loadingStates.forgot = false;
@@ -347,15 +390,12 @@ class UserPage {
      * 4. 接口失败时静默处理，不阻塞用户
      */
     handleLogout(e) {
-        // 防止重复点击
         if (this.isLoggingOut) return;
         this.isLoggingOut = true;
 
-        // 获取登出按钮，显示加载状态
         const logoutBtn = document.getElementById('logout-btn');
         this.setButtonLoading(logoutBtn, true);
 
-        // 保存用户信息用于请求（登出接口可能需要）
         const currentUserInfo = this.userInfo;
 
         // ---- 第一步：立即清除本地状态（乐观更新） ----
@@ -393,7 +433,6 @@ class UserPage {
         .finally(() => {
             this.logoutController = null;
             this.isLoggingOut = false;
-            // 按钮可能已被重新渲染，检查是否存在
             const btn = document.getElementById('logout-btn');
             if (btn) {
                 this.setButtonLoading(btn, false);
@@ -401,9 +440,6 @@ class UserPage {
         });
     }
 
-    /**
-     * 执行实际的登出请求（支持重试）
-     */
     async performLogout(userInfo, signal) {
         if (!userInfo || !userInfo.jwttoken) {
             return;
@@ -420,7 +456,7 @@ class UserPage {
 
             const serverIndex = i % servers.length;
             const server = servers[serverIndex];
-            
+
             try {
                 const url = `https://${server}/logout`;
                 const response = await fetch(url, {
@@ -458,9 +494,6 @@ class UserPage {
         throw lastError || new Error('所有登出请求均失败');
     }
 
-    /**
-     * 更新导航栏中的用户链接文字
-     */
     updateNavUser() {
         const userLinks = document.querySelectorAll('.user-nav-link');
         userLinks.forEach(link => {
@@ -479,10 +512,10 @@ class UserPage {
         const container = document.getElementById('user-list-container');
         if (!container) return;
         if (this.loadingStates.favorites) return;
-        
+
         this.loadingStates.favorites = true;
         this.showListLoader(container);
-        
+
         try {
             const data = await userApi.getFavoriteList(page);
             this.loadingStates.favorites = false;
@@ -492,9 +525,40 @@ class UserPage {
             } else {
                 container.innerHTML = this.renderComicList(list);
             }
+
+            // ★ 用服务端返回的总数修正本地缓存
+            if (data && data.total !== undefined) {
+                this.syncFavoriteTotal(Number(data.total));
+            }
         } catch (err) {
             this.loadingStates.favorites = false;
             this.showListError(container, err.message || '加载失败');
+        }
+    }
+
+    /**
+     * 用服务端返回的收藏总数修正 localStorage + 界面
+     */
+    syncFavoriteTotal(total) {
+        if (!Number.isFinite(total)) return;
+        // 更新 localStorage
+        try {
+            const raw = localStorage.getItem('userInfo');
+            if (raw) {
+                const info = JSON.parse(raw);
+                info.album_favorites = total;
+                localStorage.setItem('userInfo', JSON.stringify(info));
+            }
+        } catch (e) {
+            // ignore
+        }
+        // 更新 UI
+        if (this.userInfo) {
+            this.userInfo.album_favorites = total;
+        }
+        const favTab = document.querySelector('.user-tab[data-tab="favorites"]');
+        if (favTab) {
+            favTab.textContent = `收藏 (${total})`;
         }
     }
 
@@ -502,10 +566,10 @@ class UserPage {
         const container = document.getElementById('user-list-container');
         if (!container) return;
         if (this.loadingStates.tracking) return;
-        
+
         this.loadingStates.tracking = true;
         this.showListLoader(container);
-        
+
         try {
             const data = await userApi.getTrackingList(page);
             this.loadingStates.tracking = false;
@@ -525,18 +589,18 @@ class UserPage {
         const container = document.getElementById('user-list-container');
         if (!container) return;
         if (this.loadingStates.notifications) return;
-        
+
         this.loadingStates.notifications = true;
         this.showListLoader(container);
-        
+
         try {
             const data = await userApi.getNotifications(this.notificationType, page);
             this.loadingStates.notifications = false;
-            
+
             let list = [];
             let total = 0;
             let unread = 0;
-            
+
             if (Array.isArray(data)) {
                 list = data;
                 total = data.length;
@@ -554,13 +618,13 @@ class UserPage {
                 total = 0;
                 unread = 0;
             }
-            
+
             this.notificationList = list;
             this.notificationTotal = total;
             this.notificationUnread = unread;
-            
+
             this.renderNotificationsFull();
-            
+
             if (unread !== undefined) {
                 this.updateNotificationBadge(unread);
             }
@@ -571,15 +635,13 @@ class UserPage {
         }
     }
 
-    // 渲染完整的通知区域（按钮 + 统计 + 列表）
     renderNotificationsFull() {
         const container = document.getElementById('user-list-container');
         if (!container) return;
-        
-        const list = this.notificationList || [];
+
         const total = this.notificationTotal || 0;
         const unread = this.notificationUnread || 0;
-        
+
         const typeButtons = `
             <div class="notif-types">
                 <span class="notif-type-btn ${this.notificationType === 'all' ? 'active' : ''}" data-type="all">全部</span>
@@ -589,35 +651,34 @@ class UserPage {
             <div class="notif-stats">共 ${total} 条通知，未读 ${unread} 条</div>
             <div class="notif-list"></div>
         `;
-        
+
         container.innerHTML = typeButtons;
         this.renderNotifications();
     }
 
-    // 只渲染列表项（不重建按钮）
     renderNotifications() {
         const container = document.getElementById('user-list-container');
         if (!container) return;
-        
+
         const list = this.notificationList || [];
         const listEl = container.querySelector('.notif-list');
         if (!listEl) return;
-        
+
         const statsEl = container.querySelector('.notif-stats');
         if (statsEl) {
             statsEl.textContent = `共 ${this.notificationTotal || 0} 条通知，未读 ${this.notificationUnread || 0} 条`;
         }
-        
+
         if (!list || !list.length) {
             listEl.innerHTML = `<div class="notif-empty"><p>暂无通知</p></div>`;
             return;
         }
-        
+
         const items = list.map(item => {
             const isRead = item.read || item.is_read || false;
             const date = item.date || '';
             let contentHtml = '';
-            
+
             if (item.type === 'comic_follow') {
                 const updates = item.content || [];
                 contentHtml = updates.map(update => `
@@ -638,7 +699,7 @@ class UserPage {
                 const content = typeof item.content === 'string' ? item.content : JSON.stringify(item.content || '');
                 contentHtml = `<div class="notif-content">${content}</div>`;
             }
-            
+
             return `
                 <div class="notif-item ${isRead ? 'read' : 'unread'}">
                     <div class="notif-header">
@@ -653,14 +714,14 @@ class UserPage {
                 </div>
             `;
         }).join('');
-        
+
         listEl.innerHTML = items;
     }
 
     updateNotificationBadge(unread = null) {
         const userLinks = document.querySelectorAll('.user-nav-link');
         if (!userLinks.length) return;
-        
+
         if (unread === null && this.userInfo) {
             userApi.getNotifications('all', 1).then(data => {
                 let count = 0;
